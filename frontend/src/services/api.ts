@@ -1,10 +1,10 @@
-import type { ExplainLanguage, Health, Language, ReviewResponse } from "../types";
+﻿import type { ExplainLanguage, Health, Language, ReviewResponse } from "../types";
 
 // Empty by default: the Vite dev server proxies /api and /health to the backend.
 // Set VITE_API_BASE_URL (for example https://api.example.com) for deployed builds.
 const BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
-export const REVIEW_TIMEOUT_MS = 130_000;
+export const REVIEW_TIMEOUT_MS = 300_000;
 
 export class ApiError extends Error {
   readonly code: string;
@@ -78,3 +78,4 @@ export async function getHealth(): Promise<Health> {
   if (!res.ok) throw await toApiError(res);
   return (await res.json()) as Health;
 }
+

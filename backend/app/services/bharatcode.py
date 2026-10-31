@@ -1,4 +1,4 @@
-"""Small client for the BharatCode model API (OpenAI-compatible chat completions).
+﻿"""Small client for the BharatCode model API (OpenAI-compatible chat completions).
 
 Everything endpoint-specific lives in this module and in ``config.py`` so it can be
 updated in one place if the official API details change:
@@ -127,7 +127,7 @@ Rules:
 Reply with ONE JSON object and nothing else (no markdown fences, no commentary), shaped exactly like this:
 {
   "summary": "2-4 sentence plain-language summary of the review",
-  "best_practices": ["up to 5 short secure-coding practices that apply to THIS code"],
+  "best_practices": ["up to 3 short secure-coding practices that apply to THIS code"],
   "static_finding_notes": [
     {"id": "<id of a static-analysis finding from the list>", "explanation": "beginner-friendly explanation", "why_it_matters": "impact in one or two sentences", "recommendation": "what to change", "fixed_code": "safer replacement for the affected lines, code only"}
   ],
@@ -136,7 +136,7 @@ Reply with ONE JSON object and nothing else (no markdown fences, no commentary),
   ]
 }
 
-Guidance: write one static_finding_notes entry for each static-analysis finding you were given. additional_findings are NEW issues the scanners did not report (at most 8); do not repeat scanner findings. Use an empty list when you have nothing well supported to add."""
+Guidance: write one static_finding_notes entry for each static-analysis finding you were given. additional_findings are NEW issues the scanners did not report (at most 2); do not repeat scanner findings. Use an empty list when you have nothing well supported to add."""
 
 REPAIR_PROMPT = (
     "Your previous reply could not be parsed or validated. Reply again with ONE valid JSON "
@@ -186,7 +186,7 @@ def build_messages(
         "</code_under_review>\n\n"
         "Return the JSON object now."
     )
-    system = SYSTEM_PROMPT + _LANGUAGE_RULES.get(explain_language, "")
+    system = "/no_think\n" + SYSTEM_PROMPT + _LANGUAGE_RULES.get(explain_language, "")
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
@@ -291,6 +291,11 @@ class BharatCodeClient:
             "temperature": temperature,
             "max_tokens": max_tokens or s.bharatcode_max_output_tokens,
         }
+        if s.bharatcode_extra_body.strip():
+            try:
+                payload.update(json.loads(s.bharatcode_extra_body))
+            except ValueError:
+                pass
         headers = {
             "Authorization": f"Bearer {s.bharatcode_api_key.strip()}",
             "Content-Type": "application/json",
@@ -386,3 +391,5 @@ class BharatCodeClient:
             {"role": "user", "content": REPAIR_PROMPT},
         ]
         return parse_ai_review(extract_json(await self.chat(repair)))
+
+

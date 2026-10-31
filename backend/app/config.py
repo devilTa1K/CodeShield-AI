@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     bharatcode_timeout_seconds: float = 90.0
     bharatcode_max_output_tokens: int = 6000
     bharatcode_max_retries: int = 2
+    bharatcode_extra_body: str = ""
 
     # --- Input limits -------------------------------------------------------
     max_code_chars: int = 40_000
