@@ -242,3 +242,23 @@ def test_error_messages_never_contain_the_api_key():
         with pytest.raises(Exception) as info:
             review(client)
         assert "test-key-not-real" not in str(info.value)
+
+
+def test_402_shows_the_providers_own_refusal_text():
+    body = {"error": {"code": "model_not_in_plan", "message": "Model qwen-3.8-27b is not in your plan"}}
+    client, rec, _ = make_client(httpx.Response(402, json=body))
+    with pytest.raises(PlanError) as info:
+        review(client)
+    assert "model_not_in_plan" in str(info.value) and "not in your plan" in str(info.value)
+    assert "test-key-not-real" not in str(info.value) and len(rec.requests) == 1
+
+
+def test_string_error_bodies_and_junk_are_handled():
+    client, _, _ = make_client(httpx.Response(402, json={"error": "plan\x00 required\n" + "x" * 500}))
+    with pytest.raises(PlanError) as info:
+        review(client)
+    assert "plan" in str(info.value) and "\x00" not in str(info.value) and len(str(info.value)) < 400
+    client, _, _ = make_client(httpx.Response(402, content=b"<html>not json</html>"))
+    with pytest.raises(PlanError) as info:
+        review(client)
+    assert "BharatCode said" not in str(info.value)

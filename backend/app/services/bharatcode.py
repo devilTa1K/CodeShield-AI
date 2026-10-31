@@ -318,15 +318,30 @@ class BharatCodeClient:
                 if status in (401, 403):
                     raise AuthError()
                 if status == 402:
-                    raise PlanError()
+                    raise PlanError(self._with_detail(PlanError.default_message, response))
                 if status == 429 or status >= 500:
                     if last_try:
                         raise (RateLimitError() if status == 429 else UpstreamError())
                     await self._sleep(self._backoff(attempt, response))
                     continue
-                raise UpstreamError(f"BharatCode rejected the request (HTTP {status}).")
+                raise UpstreamError(self._with_detail(f"BharatCode rejected the request (HTTP {status}).", response))
 
         raise UpstreamError()  # pragma: no cover - loop always returns or raises
+
+    @staticmethod
+    def _with_detail(message: str, response: httpx.Response) -> str:
+        """Append BharatCode's own refusal text (short, sanitized) so users can see why."""
+        try:
+            err = response.json().get("error")
+        except (ValueError, AttributeError):
+            return message
+        if isinstance(err, dict):
+            parts = [str(err.get(k)) for k in ("code", "message") if err.get(k)]
+            err = ": ".join(dict.fromkeys(parts))
+        if not isinstance(err, str) or not err.strip():
+            return message
+        detail = re.sub(r"[^\x20-\x7e]", " ", err).strip()[:200]
+        return f'{message} BharatCode said: "{detail}"'
 
     @staticmethod
     def _backoff(attempt: int, response: Optional[httpx.Response] = None) -> float:
