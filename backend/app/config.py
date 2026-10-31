@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     bharatcode_timeout_seconds: float = 90.0
     bharatcode_max_output_tokens: int = 6000
     bharatcode_max_retries: int = 2
-    bharatcode_extra_body: str = ""
+    bharatcode_extra_body: str = '{"chat_template_kwargs":{"enable_thinking":false}}'
 
     # --- Input limits -------------------------------------------------------
     max_code_chars: int = 40_000
