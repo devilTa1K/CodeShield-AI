@@ -3,7 +3,7 @@ BharatCode Build League submission
 Project: CodeShield AI
 Category: Coding and developer tools (secure code review)
 Builder: Omkar Dilip Ingale, B.Tech Information Technology, MIT-ADT University, Pune
-Repository: <ADD PUBLIC GITHUB URL>
+Repository: https://github.com/devilTa1K/CodeShield-AI
 Live demo: <OPTIONAL: ADD URL>
 
 Summary
