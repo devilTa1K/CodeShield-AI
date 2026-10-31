@@ -1,0 +1,41 @@
+BharatCode Build League submission
+
+Project: CodeShield AI
+Category: Coding and developer tools (secure code review)
+Builder: Omkar Dilip Ingale, B.Tech Information Technology, MIT-ADT University, Pune
+Repository: <ADD PUBLIC GITHUB URL>
+Live demo: <OPTIONAL: ADD URL>
+
+Summary
+CodeShield AI reviews pasted code for security issues and bugs. Static analysis (Bandit for
+Python, built-in rules for JavaScript, TypeScript, Java and C, optional Semgrep) finds rule
+matches. The BharatCode model API then explains each finding in beginner-friendly language,
+proposes safer replacement code and may flag extra issues. The UI labels scanner findings and
+AI hypotheses separately, never claims code is secure, and never executes submitted code.
+
+How BharatCode is used
+- Model: qwen-3.8-27b via the BharatCode model API
+- Endpoint: POST https://bharatcode.ai/api/model/v1/chat/completions (OpenAI-compatible)
+- Auth: Authorization: Bearer $BHARATCODE_API_KEY, read from a backend environment variable
+- Client: backend/app/services/bharatcode.py
+- Uses: plain-language explanations, impact, fix suggestions, review summary, secure coding
+  practices, and additional findings
+- Replies are requested as JSON, validated field by field, and repaired once if malformed
+- Secrets are redacted before code is sent; 401/402/403 are not retried, 429/5xx are retried
+  with backoff; if the API is unavailable the app shows scanner results and a clear notice
+  instead of fabricated AI output
+
+Stack
+React + Vite + TypeScript + Tailwind CSS; Python FastAPI; Bandit; pytest and Vitest
+
+Run locally
+See README.md. Backend: pip install -r backend/requirements-dev.txt, copy .env.example to
+backend/.env, set BHARATCODE_API_KEY, run uvicorn app.main:app --port 8000. Frontend:
+cd frontend && npm install && npm run dev.
+
+Tests
+backend: pytest (82 tests, no API key needed). frontend: npm test (20 tests).
+
+Security notes
+The API key lives only in the backend environment and is never committed or sent to the
+browser. The repository contains .env.example with placeholders only.
