@@ -5,7 +5,7 @@ import FindingsList from "../components/FindingsList";
 import ReviewSummary from "../components/ReviewSummary";
 import { SAMPLES } from "../samples";
 import { ApiError, getHealth, reviewCode } from "../services/api";
-import { applyFix } from "../lib/fix";
+import { applyAllFixes, applyFix, canApplyFix } from "../lib/fix";
 import type { ExplainLanguage, Finding, Health, Language, ReviewResponse, Severity } from "../types";
 import { EXPLAIN_LANGUAGES, LANGUAGES, SEVERITIES } from "../types";
 
@@ -56,6 +56,7 @@ export default function Home() {
   const [previous, setPrevious] = useState<ReviewResponse | null>(null);
   const [explainLanguage, setExplainLanguage] = useState<ExplainLanguage>("english");
   const [error, setError] = useState<ApiError | null>(null);
+  const [fixNote, setFixNote] = useState<string | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [healthChecked, setHealthChecked] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -135,8 +136,26 @@ export default function Home() {
     [code, loading, result, runReview, stale],
   );
 
+  const fixableCount = useMemo(() => (result ? result.findings.filter(canApplyFix).length : 0), [result]);
+
+  const applyAllSuggestedFixes = useCallback(() => {
+    if (stale || loading || !result) return;
+    const { code: patched, applied, skipped } = applyAllFixes(code, result.findings);
+    if (applied.length === 0) {
+      setError(new ApiError("fix_not_applicable", "These fixes could not be applied automatically. Copy them and edit the code by hand."));
+      return;
+    }
+    setFixNote(
+      `Applied ${applied.length} of ${applied.length + skipped} fixes${skipped ? ` (${skipped} skipped because they overlap or no longer fit)` : ""}. ` +
+        "The scanners re-checked the patched code; compare the score below, and run your own tests before relying on the changes.",
+    );
+    setCode(patched);
+    void runReview(patched);
+  }, [code, loading, result, runReview, stale]);
+
   function loadSample(kind: "vulnerable" | "safe") {
     setCode(SAMPLES[language][kind]);
+    setFixNote(null);
     setError(null);
     setPrevious(null);
   }
@@ -215,7 +234,7 @@ export default function Home() {
                 }
               }}
             >
-              <CodeEditor value={code} onChange={setCode} language={language} flaggedLines={flaggedLines} disabled={loading} />
+              <CodeEditor value={code} onChange={(v) => { setCode(v); setFixNote(null); }} language={language} flaggedLines={flaggedLines} disabled={loading} />
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -251,6 +270,12 @@ export default function Home() {
               Tip: press <kbd className="rounded border border-ink-600 px-1 font-mono">Ctrl</kbd>/<kbd className="rounded border border-ink-600 px-1 font-mono">⌘</kbd> + <kbd className="rounded border border-ink-600 px-1 font-mono">Enter</kbd> to run. Likely secrets are redacted before code is sent to the AI.
             </p>
 
+            {fixNote && !error && (
+              <p role="status" className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-100">
+                {fixNote}
+              </p>
+            )}
+
             {error && (
               <div role="alert" className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
                 <div>
@@ -275,6 +300,8 @@ export default function Home() {
             findings={result.findings}
             onApplyFix={applySuggestedFix}
             canApply={!stale && !loading}
+            onApplyAll={applyAllSuggestedFixes}
+            fixableCount={fixableCount}
           />
         )}
         {hasResult && result.findings.length === 0 && (

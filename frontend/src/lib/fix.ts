@@ -37,3 +37,34 @@ export function applyFix(code: string, finding: Finding): string | null {
 
   return [...lines.slice(0, start - 1), ...replacement, ...lines.slice(end)].join(eol);
 }
+
+export interface FixAllResult {
+  /** The code with every non-overlapping fix applied. */
+  code: string;
+  applied: Finding[];
+  /** Fixable findings that were left alone because they overlap another fix or no longer fit the code. */
+  skipped: number;
+}
+
+/**
+ * Apply every fixable finding at once. Fixes are applied bottom-to-top so earlier line numbers stay
+ * valid, and a fix that overlaps one already applied is skipped instead of guessing.
+ */
+export function applyAllFixes(code: string, findings: Finding[]): FixAllResult {
+  const candidates = findings
+    .filter(canApplyFix)
+    .sort((a, b) => (b.line_start as number) - (a.line_start as number) || (b.line_end ?? 0) - (a.line_end ?? 0));
+  let current = code;
+  let lowestApplied = Infinity;
+  const applied: Finding[] = [];
+  for (const finding of candidates) {
+    const end = finding.line_end ?? (finding.line_start as number);
+    if (end >= lowestApplied) continue; // overlaps a fix that is already in
+    const patched = applyFix(current, finding);
+    if (patched === null) continue;
+    current = patched;
+    lowestApplied = finding.line_start as number;
+    applied.push(finding);
+  }
+  return { code: current, applied, skipped: candidates.length - applied.length };
+}

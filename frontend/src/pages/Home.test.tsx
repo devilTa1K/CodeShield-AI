@@ -283,6 +283,47 @@ describe("Home: advanced features", () => {
     expect(delta).toHaveTextContent("findings 1 → 0");
   });
 
+  it("fixes everything at once, re-checks, and explains what happened", async () => {
+    const user = userEvent.setup();
+    const bodies: { code: string }[] = [];
+    const first = review({
+      findings: [
+        finding({ id: "S1", severity: "critical", line_start: 14, line_end: 14, suggested_code: 'subprocess.run(["cat", filename], check=True)' }),
+        finding({ id: "S2", severity: "critical", line_start: 22, line_end: 22, suggested_code: "return hashlib.sha256(password.encode()).hexdigest()" }),
+        finding({ id: "S3", severity: "low", line_start: 3, line_end: 3, suggested_code: null }),
+      ],
+      total_findings: 3,
+      score: 47,
+      grade: "D",
+    });
+    const second = review({ review_id: "second", findings: [], total_findings: 0, score: 100, grade: "A" });
+    mockBackend((_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return json(bodies.length === 1 ? first : second);
+    });
+    render(<Home />);
+    await loadVulnerableAndAnalyze(user);
+    await screen.findByText("Showing 3 of 3");
+
+    await user.click(screen.getByRole("button", { name: /Fix all \(2\) & verify/ }));
+
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1].code).toContain('    subprocess.run(["cat", filename], check=True)');
+    expect(bodies[1].code).toContain("    return hashlib.sha256(password.encode()).hexdigest()");
+    expect(bodies[1].code).not.toContain("md5");
+    expect(await screen.findByText(/Applied 2 of 2 fixes/)).toBeInTheDocument();
+    expect(await screen.findByTestId("score-delta")).toHaveTextContent("+53 points");
+  });
+
+  it("only offers Fix all when more than one finding has a fix", async () => {
+    const user = userEvent.setup();
+    mockBackend(() => json(review({ findings: [finding()], total_findings: 1 })));
+    render(<Home />);
+    await loadVulnerableAndAnalyze(user);
+    await screen.findByText("Showing 1 of 1");
+    expect(screen.queryByRole("button", { name: /Fix all/ })).not.toBeInTheDocument();
+  });
+
   it("disables Apply fix when the code was edited after the review", async () => {
     const user = userEvent.setup();
     mockBackend(() => json(review({ findings: [finding()], total_findings: 1 })));

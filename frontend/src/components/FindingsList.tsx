@@ -16,9 +16,12 @@ interface ListProps {
   findings: Finding[];
   onApplyFix?: (finding: Finding) => void;
   canApply?: boolean;
+  /** Apply every suggested fix at once and re-check. */
+  onApplyAll?: () => void;
+  fixableCount?: number;
 }
 
-export default function FindingsList({ findings, onApplyFix, canApply }: ListProps) {
+export default function FindingsList({ findings, onApplyFix, canApply, onApplyAll, fixableCount = 0 }: ListProps) {
   const [severity, setSeverity] = useState<SeverityFilter>("all");
   const [category, setCategory] = useState("all");
   const [origin, setOrigin] = useState<OriginFilter>("all");
@@ -60,6 +63,17 @@ export default function FindingsList({ findings, onApplyFix, canApply }: ListPro
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {onApplyAll && fixableCount > 1 && (
+            <button
+              type="button"
+              onClick={onApplyAll}
+              disabled={!canApply}
+              title="Applies every suggested fix, then re-runs the scanners to verify the result"
+              className="rounded-md bg-accent-500 px-3 py-1.5 text-xs font-semibold text-ink-950 transition hover:bg-accent-400 disabled:cursor-not-allowed disabled:bg-ink-700 disabled:text-ink-400"
+            >
+              Fix all ({fixableCount}) &amp; verify
+            </button>
+          )}
           <label className="sr-only" htmlFor="filter-category">
             Filter by category
           </label>

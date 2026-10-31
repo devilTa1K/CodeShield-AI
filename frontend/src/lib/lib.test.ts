@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { finding, review } from "../test/fixtures";
-import { applyFix, canApplyFix } from "./fix";
+import { applyAllFixes, applyFix, canApplyFix } from "./fix";
 import { toJson, toMarkdown, toSarif } from "./report";
 
 describe("applyFix", () => {
@@ -84,5 +84,30 @@ describe("report export", () => {
     const ids = run.tool.driver.rules.map((r: { id: string }) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(run.tool.driver.rules[0].helpUri).toMatch(/^https:\/\/cwe\.mitre\.org\/data\/definitions\/\d+\.html$/);
+  });
+});
+
+describe("applyAllFixes", () => {
+  const fix = (id: string, start: number, end: number, code: string) =>
+    ({ id, line_start: start, line_end: end, suggested_code: code }) as Parameters<typeof applyAllFixes>[1][number];
+  const source = ["a = 1", "def f():", "    x = eval(s)", "    y = md5(p)", "    return x, y", "z = 3"].join("\n");
+
+  it("applies every fix bottom-to-top so line numbers stay valid and indentation is kept", () => {
+    const result = applyAllFixes(source, [fix("1", 3, 3, "x = safe(s)"), fix("2", 4, 4, "y = sha256(p)\nw = 0")]);
+    expect(result.code.split("\n")).toEqual(["a = 1", "def f():", "    x = safe(s)", "    y = sha256(p)", "    w = 0", "    return x, y", "z = 3"]);
+    expect(result.applied).toHaveLength(2);
+    expect(result.skipped).toBe(0);
+  });
+
+  it("skips fixes that overlap an applied one and findings without usable fixes", () => {
+    const result = applyAllFixes(source, [fix("1", 3, 4, "x = y = 0"), fix("2", 4, 4, "y = 1"), fix("3", 99, 99, "nope"), { id: "4", line_start: 1, line_end: 1, suggested_code: null } as never]);
+    expect(result.applied.map((f) => f.id)).toEqual(["2"]);
+    expect(result.skipped).toBe(2);
+    expect(result.code).toContain("y = 1");
+    expect(result.code).not.toContain("x = y = 0");
+  });
+
+  it("changes nothing when there is nothing to apply", () => {
+    expect(applyAllFixes(source, [])).toEqual({ code: source, applied: [], skipped: 0 });
   });
 });
