@@ -40,9 +40,13 @@ Confidence = Literal["low", "medium", "high"]
 # --------------------------------------------------------------------------- #
 # API request / response
 # --------------------------------------------------------------------------- #
+EXPLAIN_LANGUAGES: tuple[str, ...] = ("english", "hindi", "hinglish")
+
+
 class ReviewRequest(BaseModel):
     code: str
     language: str
+    explain_language: str = "english"
 
 
 class Finding(BaseModel):
@@ -54,6 +58,7 @@ class Finding(BaseModel):
     tool: str
     rule_id: Optional[str] = None
     cwe: Optional[str] = None
+    owasp: Optional[str] = None
     line_start: Optional[int] = None
     line_end: Optional[int] = None
     snippet: str = ""
@@ -85,7 +90,10 @@ class ReviewResponse(BaseModel):
     review_id: str
     status: Literal["complete", "static_only"]
     language: str
+    explain_language: str = "english"
     total_findings: int
+    score: int
+    grade: str
     counts: dict[str, int]
     summary: str
     best_practices: list[str]

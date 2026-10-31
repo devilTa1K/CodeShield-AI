@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 
 from . import __version__
 from .config import Settings, get_settings
-from .schemas import SUPPORTED_LANGUAGES, ReviewRequest, ReviewResponse
+from .schemas import EXPLAIN_LANGUAGES, SUPPORTED_LANGUAGES, ReviewRequest, ReviewResponse
 from .services.analyzer import BUILTIN_RULES, bandit_available, semgrep_available
 from .services.bharatcode import BharatCodeClient
 from .services.review import AIClient, AnalysisUnavailable, perform_review
@@ -135,6 +135,10 @@ def create_app(settings: Optional[Settings] = None, ai_client: Optional[AIClient
         if language not in SUPPORTED_LANGUAGES:
             raise AppError(400, "unsupported_language",
                            f"Unsupported language. Choose one of: {', '.join(SUPPORTED_LANGUAGES)}.")
+        explain_language = body.explain_language.strip().lower()
+        if explain_language not in EXPLAIN_LANGUAGES:
+            raise AppError(400, "unsupported_explain_language",
+                           f"Explanation language must be one of: {', '.join(EXPLAIN_LANGUAGES)}.")
         if not body.code.strip():
             raise AppError(400, "empty_code", "Paste some code to review.")
         if "\x00" in body.code:
@@ -146,7 +150,7 @@ def create_app(settings: Optional[Settings] = None, ai_client: Optional[AIClient
             raise AppError(413, "code_too_large", f"Code is limited to {settings.max_code_lines:,} lines.")
 
         try:
-            return await perform_review(body.code, language, settings, ai_client)
+            return await perform_review(body.code, language, settings, ai_client, explain_language)
         except AnalysisUnavailable as exc:
             raise AppError(503, "analysis_unavailable", str(exc)) from None
 

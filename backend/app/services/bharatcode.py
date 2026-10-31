@@ -151,7 +151,25 @@ def _number_lines(code: str) -> str:
     return "\n".join(f"{i:>4}: {line}" for i, line in enumerate(safe.splitlines(), start=1))
 
 
-def build_messages(code: str, language: str, static_findings: Sequence[Finding]) -> list[dict]:
+_LANGUAGE_RULES = {
+    "english": "",
+    "hindi": (
+        "\n\nOutput language: write the summary, best_practices, explanation, why_it_matters, "
+        "recommendation and description in simple Hindi using Devanagari script. Keep JSON keys, "
+        "severity and confidence values, CWE ids, code and identifiers in English."
+    ),
+    "hinglish": (
+        "\n\nOutput language: write the summary, best_practices, explanation, why_it_matters, "
+        "recommendation and description in Hinglish (Hindi written in Roman/English letters, as "
+        "Indian developers talk). Keep JSON keys, severity and confidence values, CWE ids, code and "
+        "identifiers in English."
+    ),
+}
+
+
+def build_messages(
+    code: str, language: str, static_findings: Sequence[Finding], explain_language: str = "english"
+) -> list[dict]:
     if static_findings:
         listing = "\n".join(
             f"- id={f.id} | {f.tool} {f.rule_id or ''} | severity={f.severity.value} | "
@@ -168,7 +186,8 @@ def build_messages(code: str, language: str, static_findings: Sequence[Finding])
         "</code_under_review>\n\n"
         "Return the JSON object now."
     )
-    return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}]
+    system = SYSTEM_PROMPT + _LANGUAGE_RULES.get(explain_language, "")
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
 # --------------------------------------------------------------------------- #
@@ -335,9 +354,13 @@ class BharatCodeClient:
         return content
 
     async def review(
-        self, code: str, language: str, static_findings: Sequence[Finding]
+        self,
+        code: str,
+        language: str,
+        static_findings: Sequence[Finding],
+        explain_language: str = "english",
     ) -> AIReview:
-        messages = build_messages(code, language, static_findings)
+        messages = build_messages(code, language, static_findings, explain_language)
         text = await self.chat(messages)
         try:
             return parse_ai_review(extract_json(text))

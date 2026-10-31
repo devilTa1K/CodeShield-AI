@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { downloadText, toJson, toMarkdown, toSarif } from "../lib/report";
 import type { Health, ReviewResponse, ScannerStatus, Severity } from "../types";
 import { LANGUAGES, SEVERITIES, SEVERITY_LABEL } from "../types";
 import SeverityBadge from "./SeverityBadge";
@@ -60,14 +61,27 @@ function Tile({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+const GRADE_RING: Record<string, string> = {
+  A: "border-emerald-400 text-emerald-300",
+  B: "border-lime-400 text-lime-300",
+  C: "border-yellow-300 text-yellow-200",
+  D: "border-orange-400 text-orange-300",
+  F: "border-red-400 text-red-300",
+};
+
+const EXPORT_BTN =
+  "rounded-md border border-ink-600 bg-ink-800 px-3 py-1.5 text-xs font-medium text-ink-100 transition hover:border-ink-400 hover:bg-ink-700";
+
 interface Props {
   result: ReviewResponse | null;
   loading: boolean;
   stale: boolean;
   health: Health | null;
+  /** The review before the latest re-run, used to show an improvement delta. */
+  previous?: ReviewResponse | null;
 }
 
-export default function ReviewSummary({ result, loading, stale, health }: Props) {
+export default function ReviewSummary({ result, loading, stale, health, previous }: Props) {
   if (loading) {
     return (
       <Panel>
@@ -114,6 +128,7 @@ export default function ReviewSummary({ result, loading, stale, health }: Props)
   const languageLabel = LANGUAGES.find((l) => l.value === result.language)?.label ?? result.language;
   const max = Math.max(1, ...SEVERITIES.map((s) => result.counts[s] ?? 0));
   const complete = result.status === "complete";
+  const delta = previous ? { score: result.score - previous.score } : null;
 
   return (
     <Panel>
@@ -128,7 +143,33 @@ export default function ReviewSummary({ result, loading, stale, health }: Props)
         </p>
       )}
 
-      <div className="mt-4 grid grid-cols-3 gap-2">
+      <div className="mt-4 flex items-center gap-4 rounded-lg border border-ink-700 bg-ink-900 px-4 py-3" data-testid="score">
+        <div
+          className={`flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-full border-2 ${GRADE_RING[result.grade] ?? "border-ink-500"}`}
+          aria-hidden="true"
+        >
+          <span className="text-lg font-bold leading-none">{result.grade}</span>
+        </div>
+        <div className="min-w-0">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-ink-400">Review score</div>
+          <div className="text-2xl font-semibold tabular-nums">
+            {result.score}
+            <span className="text-sm font-normal text-ink-400"> / 100 · grade {result.grade}</span>
+          </div>
+          {delta && (
+            <div className="mt-0.5 text-xs text-ink-300" data-testid="score-delta" aria-live="polite">
+              <span className={delta.score > 0 ? "text-emerald-300" : delta.score < 0 ? "text-red-300" : ""}>
+                {delta.score > 0 ? "▲" : delta.score < 0 ? "▼" : "•"} {delta.score > 0 ? "+" : ""}
+                {delta.score} points
+              </span>{" "}
+              · findings {previous!.total_findings} → {result.total_findings} since your last review
+            </div>
+          )}
+          <p className="mt-0.5 text-[11px] text-ink-400">Reflects reported findings only. It is not proof that code is secure.</p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2">
         <Tile label="Findings" value={result.total_findings} />
         <Tile label="Language" value={languageLabel} />
         <Tile label="Time" value={`${(result.duration_ms / 1000).toFixed(1)}s`} />
@@ -194,6 +235,26 @@ export default function ReviewSummary({ result, loading, stale, health }: Props)
             <span className="text-xs">{result.ai.status === "ok" ? `Ran · ${result.ai.model}` : result.ai.status === "not_configured" ? "Not configured" : "Failed"}</span>
           </li>
         </ul>
+      </section>
+
+      <section className="mt-5" aria-label="Export report">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">Export report</h3>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className={EXPORT_BTN} onClick={() => downloadText("codeshield-report.md", toMarkdown(result), "text/markdown")}>
+            Markdown
+          </button>
+          <button type="button" className={EXPORT_BTN} onClick={() => downloadText("codeshield-report.json", toJson(result), "application/json")}>
+            JSON
+          </button>
+          <button
+            type="button"
+            className={EXPORT_BTN}
+            title="SARIF 2.1.0, importable by GitHub code scanning and IDEs"
+            onClick={() => downloadText("codeshield.sarif", toSarif(result), "application/sarif+json")}
+          >
+            SARIF
+          </button>
+        </div>
       </section>
 
       <p className="mt-auto pt-5 text-xs leading-relaxed text-ink-400">{result.disclaimer}</p>

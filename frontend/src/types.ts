@@ -1,6 +1,13 @@
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 export type Language = "python" | "javascript" | "typescript" | "java" | "c";
 export type Origin = "static_analysis" | "ai_hypothesis";
+export type ExplainLanguage = "english" | "hindi" | "hinglish";
+
+export const EXPLAIN_LANGUAGES: { value: ExplainLanguage; label: string }[] = [
+  { value: "english", label: "English" },
+  { value: "hindi", label: "हिन्दी" },
+  { value: "hinglish", label: "Hinglish" },
+];
 
 export const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
 
@@ -29,6 +36,7 @@ export interface Finding {
   tool: string;
   rule_id: string | null;
   cwe: string | null;
+  owasp: string | null;
   line_start: number | null;
   line_end: number | null;
   snippet: string;
@@ -60,7 +68,10 @@ export interface ReviewResponse {
   review_id: string;
   status: "complete" | "static_only";
   language: Language;
+  explain_language: ExplainLanguage;
   total_findings: number;
+  score: number;
+  grade: string;
   counts: Record<Severity, number>;
   summary: string;
   best_practices: string[];

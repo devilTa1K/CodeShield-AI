@@ -12,7 +12,13 @@ const ORIGIN_OPTIONS: { value: OriginFilter; label: string }[] = [
   { value: "ai_hypothesis", label: "AI hypotheses" },
 ];
 
-export default function FindingsList({ findings }: { findings: Finding[] }) {
+interface ListProps {
+  findings: Finding[];
+  onApplyFix?: (finding: Finding) => void;
+  canApply?: boolean;
+}
+
+export default function FindingsList({ findings, onApplyFix, canApply }: ListProps) {
   const [severity, setSeverity] = useState<SeverityFilter>("all");
   const [category, setCategory] = useState("all");
   const [origin, setOrigin] = useState<OriginFilter>("all");
@@ -112,7 +118,7 @@ export default function FindingsList({ findings }: { findings: Finding[] }) {
       ) : (
         <div className="space-y-3">
           {visible.map((f, i) => (
-            <FindingCard key={f.id} finding={f} defaultOpen={i < 2 && !filtered} />
+            <FindingCard key={f.id} finding={f} defaultOpen={i < 2 && !filtered} onApplyFix={onApplyFix} canApply={canApply} />
           ))}
         </div>
       )}

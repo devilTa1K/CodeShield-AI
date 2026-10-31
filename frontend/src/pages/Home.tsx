@@ -5,8 +5,9 @@ import FindingsList from "../components/FindingsList";
 import ReviewSummary from "../components/ReviewSummary";
 import { SAMPLES } from "../samples";
 import { ApiError, getHealth, reviewCode } from "../services/api";
-import type { Health, Language, ReviewResponse, Severity } from "../types";
-import { LANGUAGES, SEVERITIES } from "../types";
+import { applyFix } from "../lib/fix";
+import type { ExplainLanguage, Finding, Health, Language, ReviewResponse, Severity } from "../types";
+import { EXPLAIN_LANGUAGES, LANGUAGES, SEVERITIES } from "../types";
 
 const DEFAULT_MAX_CHARS = 40_000;
 
@@ -52,6 +53,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ReviewResponse | null>(null);
   const [reviewedCode, setReviewedCode] = useState<string | null>(null);
+  const [previous, setPrevious] = useState<ReviewResponse | null>(null);
+  const [explainLanguage, setExplainLanguage] = useState<ExplainLanguage>("english");
   const [error, setError] = useState<ApiError | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [healthChecked, setHealthChecked] = useState(false);
@@ -88,29 +91,54 @@ export default function Home() {
     return map;
   }, [result, stale]);
 
-  const analyze = useCallback(async () => {
-    if (loading || empty || overLimit) return;
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setLoading(true);
-    setError(null);
-    const submitted = code;
-    try {
-      const response = await reviewCode({ code: submitted, language }, { signal: controller.signal });
-      setResult(response);
-      setReviewedCode(submitted);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return; // cancelled by the user
-      setError(err instanceof ApiError ? err : new ApiError("unknown", "Something went wrong. Please try again."));
-    } finally {
-      setLoading(false);
-      abortRef.current = null;
-    }
-  }, [code, empty, language, loading, overLimit]);
+  const runReview = useCallback(
+    async (submitted: string) => {
+      if (loading || submitted.trim().length === 0 || submitted.length > maxChars) return;
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await reviewCode(
+          { code: submitted, language, explain_language: explainLanguage },
+          { signal: controller.signal },
+        );
+        // Keep the last review of *different* code so the dashboard can show the improvement.
+        if (result && reviewedCode !== submitted) setPrevious(result);
+        else if (!result) setPrevious(null);
+        setResult(response);
+        setReviewedCode(submitted);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return; // cancelled by the user
+        setError(err instanceof ApiError ? err : new ApiError("unknown", "Something went wrong. Please try again."));
+      } finally {
+        setLoading(false);
+        abortRef.current = null;
+      }
+    },
+    [explainLanguage, language, loading, maxChars, result, reviewedCode],
+  );
+
+  const analyze = useCallback(() => runReview(code), [code, runReview]);
+
+  const applySuggestedFix = useCallback(
+    (finding: Finding) => {
+      if (stale || loading || !result) return;
+      const patched = applyFix(code, finding);
+      if (patched === null) {
+        setError(new ApiError("fix_not_applicable", "This fix could not be applied automatically. Copy it and edit the code by hand."));
+        return;
+      }
+      setCode(patched);
+      void runReview(patched);
+    },
+    [code, loading, result, runReview, stale],
+  );
 
   function loadSample(kind: "vulnerable" | "safe") {
     setCode(SAMPLES[language][kind]);
     setError(null);
+    setPrevious(null);
   }
 
   const hasResult = result !== null;
@@ -151,6 +179,22 @@ export default function Home() {
                   {LANGUAGES.map((l) => (
                     <option key={l.value} value={l.value}>
                       {l.label}
+                    </option>
+                  ))}
+                </select>
+                <label htmlFor="explain-language" className="sr-only">
+                  Explain in
+                </label>
+                <select
+                  id="explain-language"
+                  value={explainLanguage}
+                  onChange={(e) => setExplainLanguage(e.target.value as ExplainLanguage)}
+                  title="Language of the AI explanations"
+                  className="rounded-md border border-ink-600 bg-ink-800 px-2.5 py-1.5 text-sm text-ink-100"
+                >
+                  {EXPLAIN_LANGUAGES.map((l) => (
+                    <option key={l.value} value={l.value}>
+                      Explain in {l.label}
                     </option>
                   ))}
                 </select>
@@ -213,7 +257,7 @@ export default function Home() {
                   <p className="font-semibold">Review failed</p>
                   <p className="mt-0.5 text-red-100/90">{error.message}</p>
                 </div>
-                {!["empty_code", "unsupported_language", "code_too_large"].includes(error.code) && (
+                {!["empty_code", "unsupported_language", "code_too_large", "fix_not_applicable"].includes(error.code) && (
                   <button type="button" onClick={() => void analyze()} className="rounded-md border border-red-300/40 px-3 py-1.5 text-xs font-medium hover:bg-red-500/10">
                     Try again
                   </button>
@@ -222,10 +266,17 @@ export default function Home() {
             )}
           </section>
 
-          <ReviewSummary result={result} loading={loading} stale={stale} health={health} />
+          <ReviewSummary result={result} loading={loading} stale={stale} health={health} previous={previous} />
         </div>
 
-        {hasResult && result.findings.length > 0 && <FindingsList key={result.review_id} findings={result.findings} />}
+        {hasResult && result.findings.length > 0 && (
+          <FindingsList
+            key={result.review_id}
+            findings={result.findings}
+            onApplyFix={applySuggestedFix}
+            canApply={!stale && !loading}
+          />
+        )}
         {hasResult && result.findings.length === 0 && (
           <section className="rounded-xl border border-ink-700 bg-ink-850 p-6 text-center">
             <h2 className="text-base font-semibold">No findings reported</h2>

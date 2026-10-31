@@ -11,6 +11,7 @@ from ..config import Settings
 from ..schemas import AIReview, AIStatus, Finding, ReviewResponse
 from .analyzer import analyze_static, merge_ai, severity_counts
 from .bharatcode import BharatCodeError
+from .scoring import compute_score, with_owasp
 
 logger = logging.getLogger("codeshield.review")
 
@@ -19,7 +20,9 @@ class AIClient(Protocol):
     @property
     def configured(self) -> bool: ...
 
-    async def review(self, code: str, language: str, static_findings: Sequence[Finding]) -> AIReview: ...
+    async def review(
+        self, code: str, language: str, static_findings: Sequence[Finding], explain_language: str = "english"
+    ) -> AIReview: ...
 
 
 class AnalysisUnavailable(Exception):
@@ -38,7 +41,7 @@ def _fallback_summary(counts: dict[str, int], total: int, language: str, ai: AIS
 
 
 async def perform_review(
-    code: str, language: str, settings: Settings, ai_client: AIClient
+    code: str, language: str, settings: Settings, ai_client: AIClient, explain_language: str = "english"
 ) -> ReviewResponse:
     started = time.perf_counter()
     review_id = uuid.uuid4().hex[:12]
@@ -54,7 +57,7 @@ async def perform_review(
         )
     else:
         try:
-            ai_review = await ai_client.review(code, language, static.findings)
+            ai_review = await ai_client.review(code, language, static.findings, explain_language)
             ai_status = AIStatus(status="ok", model=settings.bharatcode_model, dropped_items=ai_review.dropped_items)
         except BharatCodeError as exc:
             logger.warning("AI review failed review_id=%s code=%s", review_id, exc.code)
@@ -75,8 +78,10 @@ async def perform_review(
         )
 
     findings = merge_ai(code, static.findings, ai_review) if ai_review else static.findings
+    findings = with_owasp(findings)
     counts = severity_counts(findings)
     total = len(findings)
+    score, grade = compute_score(findings)
 
     summary = ai_review.summary if ai_review else _fallback_summary(counts, total, language, ai_status)
     logger.info(
@@ -88,7 +93,10 @@ async def perform_review(
         review_id=review_id,
         status="complete" if ai_status.status == "ok" else "static_only",
         language=language,
+        explain_language=explain_language,
         total_findings=total,
+        score=score,
+        grade=grade,
         counts=counts,
         summary=summary,
         best_practices=ai_review.best_practices if ai_review else [],

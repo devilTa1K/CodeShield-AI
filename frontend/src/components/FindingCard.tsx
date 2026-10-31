@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { canApplyFix } from "../lib/fix";
 import type { Finding } from "../types";
 import CopyButton from "./CopyButton";
 import SeverityBadge from "./SeverityBadge";
@@ -50,7 +51,21 @@ function CodeBlock({ title, code, copy }: { title: string; code: string; copy?: 
   );
 }
 
-export default function FindingCard({ finding, defaultOpen = false }: { finding: Finding; defaultOpen?: boolean }) {
+interface CardProps {
+  finding: Finding;
+  defaultOpen?: boolean;
+  /** Patch the editor with this finding's suggested code and re-run the review. */
+  onApplyFix?: (finding: Finding) => void;
+  /** False while a review is running or the editor no longer matches the reviewed code. */
+  canApply?: boolean;
+}
+
+function cweUrl(cwe: string): string | null {
+  const n = /^CWE-(\d{1,5})$/.exec(cwe)?.[1];
+  return n ? `https://cwe.mitre.org/data/definitions/${n}.html` : null;
+}
+
+export default function FindingCard({ finding, defaultOpen = false, onApplyFix, canApply = true }: CardProps) {
   const [open, setOpen] = useState(defaultOpen);
   const panelId = useId();
   const lines = lineLabel(finding);
@@ -91,6 +106,22 @@ export default function FindingCard({ finding, defaultOpen = false }: { finding:
             <OriginBadge finding={finding} />
             <span className="text-xs text-ink-400">Confidence: {finding.confidence}</span>
             {finding.rule_id && <span className="font-mono text-xs text-ink-400">{finding.rule_id}</span>}
+            {finding.cwe && (
+              <a
+                href={cweUrl(finding.cwe) ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-md border border-ink-600 px-2 py-0.5 font-mono text-xs text-ink-300 hover:border-ink-400 hover:text-ink-100"
+                title="Open the CWE entry in a new tab"
+              >
+                {finding.cwe} ↗
+              </a>
+            )}
+            {finding.owasp && (
+              <span className="rounded-md border border-ink-600 px-2 py-0.5 text-xs text-ink-300" title="OWASP Top 10 (2021) category">
+                OWASP {finding.owasp}
+              </span>
+            )}
           </div>
 
           <p className="text-sm leading-relaxed text-ink-300">{finding.description}</p>
@@ -116,6 +147,23 @@ export default function FindingCard({ finding, defaultOpen = false }: { finding:
             <div className={`grid grid-cols-[minmax(0,1fr)] gap-3 ${finding.snippet && finding.suggested_code ? "md:grid-cols-2" : ""}`}>
               {finding.snippet && <CodeBlock title={`Your code${lines ? ` · ${lines.toLowerCase()}` : ""}`} code={finding.snippet} />}
               {finding.suggested_code && <CodeBlock title="Suggested replacement" code={finding.suggested_code} copy />}
+            </div>
+          )}
+          {onApplyFix && canApplyFix(finding) && (
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => onApplyFix(finding)}
+                disabled={!canApply}
+                className="rounded-md bg-accent-500 px-3 py-1.5 text-xs font-semibold text-ink-950 transition hover:bg-accent-400 disabled:cursor-not-allowed disabled:bg-ink-700 disabled:text-ink-400"
+              >
+                Apply fix &amp; re-check
+              </button>
+              <span className="text-xs text-ink-400">
+                {canApply
+                  ? "Replaces the flagged lines in the editor, then re-runs the review. Review the change before you rely on it."
+                  : "Re-run the review on your current code to apply fixes."}
+              </span>
             </div>
           )}
           {finding.snippet && !finding.suggested_code && (

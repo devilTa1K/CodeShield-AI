@@ -37,13 +37,17 @@ class FakeAI:
     def __init__(self, review: Optional[AIReview] = None, error: Optional[Exception] = None, configured: bool = True):
         self._review, self._error, self._configured = review, error, configured
         self.calls: list[tuple[str, str, int]] = []
+        self.explain_languages: list[str] = []
 
     @property
     def configured(self) -> bool:
         return self._configured
 
-    async def review(self, code: str, language: str, static_findings: Sequence[Finding]) -> AIReview:
+    async def review(
+        self, code: str, language: str, static_findings: Sequence[Finding], explain_language: str = "english"
+    ) -> AIReview:
         self.calls.append((language, code, len(static_findings)))
+        self.explain_languages.append(explain_language)
         if self._error:
             raise self._error
         assert self._review is not None

@@ -1,4 +1,4 @@
-import type { Health, Language, ReviewResponse } from "../types";
+import type { ExplainLanguage, Health, Language, ReviewResponse } from "../types";
 
 // Empty by default: the Vite dev server proxies /api and /health to the backend.
 // Set VITE_API_BASE_URL (for example https://api.example.com) for deployed builds.
@@ -38,7 +38,7 @@ export interface ReviewOptions {
 }
 
 export async function reviewCode(
-  request: { code: string; language: Language },
+  request: { code: string; language: Language; explain_language?: ExplainLanguage },
   { signal, timeoutMs = REVIEW_TIMEOUT_MS }: ReviewOptions = {},
 ): Promise<ReviewResponse> {
   const controller = new AbortController();

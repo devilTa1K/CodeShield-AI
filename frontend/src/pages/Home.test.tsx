@@ -231,3 +231,94 @@ describe("Home: failure and edge states", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+describe("Home: advanced features", () => {
+  it("shows the review score, grade and OWASP/CWE chips", async () => {
+    const user = userEvent.setup();
+    mockBackend(() => json(review()));
+    render(<Home />);
+    await loadVulnerableAndAnalyze(user);
+    const score = await screen.findByTestId("score");
+    expect(score).toHaveTextContent("40");
+    expect(score).toHaveTextContent("grade D");
+    expect(score).toHaveTextContent("not proof that code is secure");
+    expect(screen.getAllByText(/OWASP A03:2021 Injection/).length).toBeGreaterThan(0);
+    const cwe = screen.getAllByRole("link", { name: /CWE-78/ })[0];
+    expect(cwe).toHaveAttribute("href", "https://cwe.mitre.org/data/definitions/78.html");
+    expect(cwe).toHaveAttribute("rel", expect.stringContaining("noopener"));
+  });
+
+  it("sends the chosen explanation language to the backend", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockBackend(() => json(review({ explain_language: "hinglish" })));
+    render(<Home />);
+    await user.selectOptions(screen.getByLabelText("Explain in"), "hinglish");
+    await loadVulnerableAndAnalyze(user);
+    await screen.findByTestId("score");
+    const call = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/api/review"))!;
+    expect(JSON.parse(String(call[1]?.body)).explain_language).toBe("hinglish");
+  });
+
+  it("applies a fix to the editor, re-runs the review and shows the score improvement", async () => {
+    const user = userEvent.setup();
+    const bodies: { code: string }[] = [];
+    const first = review({ findings: [finding({ id: "S1", severity: "critical", line_start: 26, line_end: 26, suggested_code: "return ast.literal_eval(expr)" })], total_findings: 1, score: 75, grade: "B" });
+    const second = review({ review_id: "second", findings: [], total_findings: 0, score: 100, grade: "A" });
+    mockBackend((_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return json(bodies.length === 1 ? first : second);
+    });
+    render(<Home />);
+    await loadVulnerableAndAnalyze(user);
+    await screen.findByText("Showing 1 of 1");
+
+    await user.click(screen.getByRole("button", { name: /Apply fix & re-check/ }));
+
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1].code).toContain("    return ast.literal_eval(expr)");
+    expect(bodies[1].code).not.toContain("eval(expr)\n    return eval");
+    expect((screen.getByRole("textbox", { name: "Code" }) as HTMLTextAreaElement).value).toBe(bodies[1].code);
+    const delta = await screen.findByTestId("score-delta");
+    expect(delta).toHaveTextContent("+25 points");
+    expect(delta).toHaveTextContent("findings 1 → 0");
+  });
+
+  it("disables Apply fix when the code was edited after the review", async () => {
+    const user = userEvent.setup();
+    mockBackend(() => json(review({ findings: [finding()], total_findings: 1 })));
+    render(<Home />);
+    await loadVulnerableAndAnalyze(user);
+    await screen.findByText("Showing 1 of 1");
+    await user.type(screen.getByRole("textbox", { name: "Code" }), "# edit");
+    expect(await screen.findByRole("button", { name: /Apply fix & re-check/ })).toBeDisabled();
+  });
+
+  it("explains when a fix cannot be applied automatically", async () => {
+    const user = userEvent.setup();
+    mockBackend(() => json(review({ findings: [finding({ line_start: 999, line_end: 999 })], total_findings: 1 })));
+    render(<Home />);
+    await loadVulnerableAndAnalyze(user);
+    await screen.findByText("Showing 1 of 1");
+    await user.click(screen.getByRole("button", { name: /Apply fix & re-check/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("could not be applied automatically");
+  });
+
+  it("exports Markdown, JSON and SARIF files", async () => {
+    const user = userEvent.setup();
+    mockBackend(() => json(review()));
+    const downloads: string[] = [];
+    const create = vi.fn((_blob: Blob) => "blob:x");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() }));
+    const clicks = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push(this.download);
+    });
+    render(<Home />);
+    await loadVulnerableAndAnalyze(user);
+    await screen.findByTestId("score");
+    for (const name of ["Markdown", "JSON", "SARIF"]) await user.click(screen.getByRole("button", { name }));
+    expect(downloads).toEqual(["codeshield-report.md", "codeshield-report.json", "codeshield.sarif"]);
+    expect(create).toHaveBeenCalledTimes(3);
+    clicks.mockRestore();
+  });
+});
+

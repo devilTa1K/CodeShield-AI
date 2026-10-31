@@ -18,6 +18,11 @@ The app never claims code is secure. If the AI is unavailable, you get scanner r
 - Languages: Python, JavaScript, TypeScript, Java, C
 - Severity levels (Critical to Informational), filters by severity, category and source
 - Dashboard: totals, severity bars, language, status, summary, analyzer status
+- **Apply fix & re-check**: one click patches the flagged lines in the editor (indentation preserved), re-runs the review and shows the score and finding-count improvement
+- **Review score and grade (A-F)** from reported findings only, with an explicit note that it is not proof of security
+- **OWASP Top 10 (2021) and CWE** chips on each finding, with links to the CWE entry
+- **Explanations in English, Hindi or Hinglish** (the AI is prompted per request; code, keys and severities stay in English)
+- **Export** the review as Markdown, JSON or **SARIF 2.1.0** (importable by GitHub code scanning and IDEs)
 - Side-by-side original vs suggested code, copy fix, re-run after edits (stale-result warning)
 - Vulnerable and safe samples for every language (`samples/`)
 - Loading, cancel, timeout, rate-limit and API-failure handling
@@ -53,8 +58,8 @@ The whole integration is in `backend/app/services/bharatcode.py` (client, prompt
 ## Tests
 
 ```bash
-cd backend && pytest                 # 82 tests: validation, scanners, API failures, parsing, timeouts
-cd frontend && npm test              # 20 tests: review workflow, filters, errors, safe rendering
+cd backend && pytest                 # 99 tests: validation, scanners, API failures, parsing, timeouts
+cd frontend && npm test              # 37 tests: review workflow, filters, errors, safe rendering
 cd frontend && npm run build         # typecheck + production build
 ```
 
@@ -66,7 +71,7 @@ Backend tests use mocked HTTP transports, so they need no API key or network.
 | --- | --- |
 | `GET /health` | Status, version, whether AI is configured |
 | `GET /api/rules` | Languages, limits, scanner availability, built-in rules |
-| `POST /api/review` | `{ "code": "...", "language": "python" }` returns findings, counts, summary, scanner and AI status |
+| `POST /api/review` | `{ "code": "...", "language": "python", "explain_language": "english" }` (`english`, `hindi`, `hinglish`) returns findings, score, grade, counts, summary, scanner and AI status |
 
 Errors are `{ "error": { "code", "message" } }` with codes such as `empty_code`, `unsupported_language`, `code_too_large`, `rate_limited`, `analysis_unavailable`.
 
@@ -95,6 +100,8 @@ BharatCode.txt      Build League submission file
 - The official BharatCode API docs page was not reachable while building. The API details above come from the provider catalog and public repos, and no live call has been made yet. Verify with your key before relying on AI output.
 - No JSON-schema mode is assumed. Structured output is requested in the prompt and validated.
 - Built-in JS/TS/Java/C rules are line-based pattern matches (no data-flow analysis), so expect false positives and misses. Bandit covers Python only. Semgrep is optional.
+- Apply fix inserts the model's suggested code as-is. It is a starting point to review, not a verified patch; the re-check only confirms the scanners no longer flag it.
+- OWASP mapping covers well-established CWE pairs only; other CWEs show no OWASP chip.
 - Rate limiting is in-memory and per process.
 - Reviews are single files up to the configured size. Nothing is stored.
 - Large inputs, obfuscated code, and logic or business-flaw vulnerabilities are poorly covered.
